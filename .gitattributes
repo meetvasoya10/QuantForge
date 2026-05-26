@@ -1,0 +1,11 @@
+# Normalise line endings to LF in the repo; checkout as-is on all platforms
+* text=auto eol=lf
+
+# Binary files — no line-ending translation
+*.bin    binary
+*.pt     binary
+*.pth    binary
+*.ckpt   binary
+*.onnx   binary
+*.whl    binary
+*.safetensors binary

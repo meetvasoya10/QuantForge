@@ -1,0 +1,48 @@
+model:
+  name: facebook/opt-125m
+  hidden_size: 768
+  num_hidden_layers: 12
+  num_attention_heads: 12
+  head_dim: 64          # hidden_size / num_attention_heads
+  ffn_dim: 3072
+  max_position_embeddings: 2048
+  vocab_size: 50272
+
+dataset:
+  name: wikitext
+  config: wikitext-2-raw-v1
+  split: validation
+  text_column: text
+
+inference:
+  device: cuda
+  dtype: float16
+  batch_size: 1
+  max_length: 512
+  max_samples: 256
+  stride: 512
+
+quantization:
+  int8:
+    per_channel: true
+    dynamic_activation: true
+  int4:
+    per_channel: true
+    group_size: null         # full-channel; set integer for group-wise
+  gptq:
+    block_size: 128
+    calibration_samples: 64
+    damping_factor: 0.01
+  smoothquant:
+    alpha: 0.5               # migration strength
+    calibration_samples: 64
+  ggfu:
+    group_size: 32
+    bits: 4
+    clip_percentile: 99.9
+    calibration_samples: 64
+
+kv_cache:
+  seq_lengths: [128, 512, 1024, 2048, 4096]
+  fp16_bits: 16
+  int8_bits: 8

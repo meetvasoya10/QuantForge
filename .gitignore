@@ -1,0 +1,74 @@
+# ── Virtual environments ──────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+.env/
+
+# ── Python build / packaging artifacts ───────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+MANIFEST
+.eggs/
+
+# ── HuggingFace / Torch caches ───────────────────────────────────────────────
+# Model weights are large and should NOT be committed
+.cache/
+huggingface/
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+*.onnx
+
+# ── Results (generated at runtime — only keep the placeholder) ────────────────
+results/*.json
+results/*.md
+results/*.csv
+results/*.png
+results/*.txt
+# Keep the placeholder so the directory exists in the repo
+!results/.gitkeep
+
+# ── Jupyter / IPython ─────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── IDE & editor files ────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db
+
+# ── OS generated ──────────────────────────────────────────────────────────────
+desktop.ini
+ehthumbs.db
+
+# ── Testing & coverage ────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+*.log
+
+# ── Type checker caches ───────────────────────────────────────────────────────
+.mypy_cache/
+.pyright/
+.ruff_cache/
+
+# ── Misc ─────────────────────────────────────────────────────────────────────
+*.swp
+*.swo
+*~
