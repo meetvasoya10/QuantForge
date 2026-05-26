@@ -18,13 +18,6 @@ import traceback
 from pathlib import Path
 from typing import Any, Dict, List
 
-os.environ.setdefault("PYTHONIOENCODING", "utf-8")
-try:
-    sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)  # type: ignore[union-attr]
-    sys.stderr.reconfigure(encoding="utf-8", line_buffering=True)  # type: ignore[union-attr]
-except Exception:
-    pass
-
 import torch
 
 ROOT = Path(__file__).resolve().parents[2]

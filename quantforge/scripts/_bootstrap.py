@@ -19,6 +19,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+# FIX WINDOWS SEGFAULT: datasets must be imported BEFORE torch to load DLLs correctly
+import datasets  # noqa: F401
+
 # Project root is 2 levels up from this file (quantforge/scripts/_bootstrap.py)
 _ROOT = Path(__file__).resolve().parents[2]
 _VENV_PYTHON = _ROOT / ".venv" / "Scripts" / "python.exe"
@@ -35,6 +38,9 @@ def _running_in_venv() -> bool:
 
 def _ensure_venv() -> None:
     """Re-exec with venv Python if we're not already inside it."""
+    # Proof of life
+    print("QuantForge | Bootstrapping...", flush=True)
+
     if _running_in_venv():
         return  # Already correct Python — nothing to do
 
@@ -49,7 +55,16 @@ def _ensure_venv() -> None:
 
     # Re-launch: replace this process with the venv python + same args
     print(f"[QuantForge] Switching to venv Python: {_VENV_PYTHON}", flush=True)
-    result = subprocess.run([str(_VENV_PYTHON)] + sys.argv)
+    os.environ["PYTHONUNBUFFERED"] = "1"
+    os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+    
+    # Avoid passing -c without a script body if someone is testing with python -c
+    args = sys.argv
+    if args and args[0] == "-c":
+        print("Cannot auto-relaunch a '-c' command. Please use the venv Python directly.")
+        sys.exit(1)
+        
+    result = subprocess.run([str(_VENV_PYTHON)] + args)
     sys.exit(result.returncode)
 
 
