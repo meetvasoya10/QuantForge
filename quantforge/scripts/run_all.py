@@ -1,46 +1,44 @@
-﻿"""
+"""
 run_all.py - Run the complete QuantForge benchmark suite end-to-end.
-
-Executes:
-  1. FP16 baseline
-  2. INT8, INT4, GPTQ, SmoothQuant, GGFU quantized benchmarks
-  3. KV-cache estimation
-  4. torch.compile benchmark
-  5. Generates consolidated benchmark_table.md
 
 Usage:
     python -m quantforge.scripts.run_all [--max_samples 256] [--max_length 512]
                                          [--device cuda] [--dtype float16]
+                                         [--skip_compile]
 """
 
 from __future__ import annotations
 
 import argparse
-import io
 import logging
+import os
 import sys
 import traceback
 from pathlib import Path
 from typing import Any, Dict, List
 
-import torch
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+try:
+    sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)   # type: ignore[union-attr]
+    sys.stderr.reconfigure(encoding="utf-8", line_buffering=True)   # type: ignore[union-attr]
+except Exception:
+    pass
 
-# Force unbuffered output
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, line_buffering=True)
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, line_buffering=True)
+print("QuantForge | run_all starting ...", flush=True)
+
+import torch  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from quantforge.evaluation.benchmark import save_benchmark_table
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s  %(levelname)-8s  %(message)s",
+_handler = logging.StreamHandler(sys.stdout)
+_handler.setFormatter(logging.Formatter(
+    fmt="%(asctime)s  %(levelname)-8s  %(message)s",
     datefmt="%H:%M:%S",
-    stream=sys.stdout,
-    force=True,
-)
+))
+logging.basicConfig(level=logging.INFO, handlers=[_handler], force=True)
 logger = logging.getLogger(__name__)
 
 
@@ -52,16 +50,16 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--dtype",   default="float16",
                    choices=["float16", "float32", "bfloat16"])
     p.add_argument("--skip_compile", action="store_true",
-                   help="Skip torch.compile benchmark (use on older PyTorch or Windows)")
+                   help="Skip torch.compile benchmark")
     return p.parse_args()
 
 
 def _run_step(label: str, fn) -> bool:
-    """Execute *fn*; log and continue on any exception. Returns True on success."""
+    """Execute fn; log and continue on any exception. Returns True on success."""
     logger.info("")
-    logger.info("━" * 60)
+    logger.info("=" * 60)
     logger.info("  STEP: %s", label)
-    logger.info("━" * 60)
+    logger.info("=" * 60)
     try:
         fn()
         return True
@@ -79,10 +77,6 @@ def main() -> None:
         "--device",      args.device,
         "--dtype",       args.dtype,
     ]
-
-    # ─────────────────────────────────────────────────────────────────
-    # Import runners lazily so import errors don't abort everything
-    # ─────────────────────────────────────────────────────────────────
 
     def run_baseline():
         import quantforge.scripts.run_baseline as m
@@ -135,9 +129,6 @@ def main() -> None:
         if device.type == "cuda":
             torch.cuda.empty_cache()
 
-    # ─────────────────────────────────────────────────────────────────
-    # Execute steps
-    # ─────────────────────────────────────────────────────────────────
     steps = [
         ("FP16 Baseline",                   run_baseline),
         ("INT8 W8A8",                        make_quant_runner("int8")),
@@ -159,9 +150,6 @@ def main() -> None:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-    # ─────────────────────────────────────────────────────────────────
-    # Build consolidated benchmark table
-    # ─────────────────────────────────────────────────────────────────
     logger.info("")
     logger.info("Building benchmark table ...")
     result_files = [

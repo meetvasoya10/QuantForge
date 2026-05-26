@@ -1,4 +1,4 @@
-﻿"""
+"""
 run_kv_cache.py - KV-cache INT8 memory estimation benchmark.
 
 Usage:
@@ -8,47 +8,48 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import io
 import logging
+import os
 import sys
 from pathlib import Path
 
-# Force unbuffered output
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, line_buffering=True)
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, line_buffering=True)
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+try:
+    sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)   # type: ignore[union-attr]
+    sys.stderr.reconfigure(encoding="utf-8", line_buffering=True)   # type: ignore[union-attr]
+except Exception:
+    pass
 
-# ── project imports ────────────────────────────────────────────────────────
+print("QuantForge | run_kv_cache starting ...", flush=True)
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from quantforge.quantization.kv_cache import compare_kv_cache, build_kv_cache_table
 from quantforge.evaluation.benchmark import save_json, RESULTS_DIR
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s  %(levelname)-8s  %(message)s",
+_handler = logging.StreamHandler(sys.stdout)
+_handler.setFormatter(logging.Formatter(
+    fmt="%(asctime)s  %(levelname)-8s  %(message)s",
     datefmt="%H:%M:%S",
-    stream=sys.stdout,
-    force=True,
-)
+))
+logging.basicConfig(level=logging.INFO, handlers=[_handler], force=True)
 logger = logging.getLogger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="QuantForge KV-cache Memory Estimation")
-    p.add_argument("--batch_size", type=int, default=1,
-                   help="Batch size for KV-cache estimation (default: 1)")
+    p.add_argument("--batch_size", type=int, default=1)
     return p.parse_args()
 
 
 def main() -> None:
     args = parse_args()
 
-    # OPT-125M config values
     seq_lengths = [128, 512, 1024, 2048, 4096]
-    num_layers  = 12
-    num_heads   = 12
-    head_dim    = 64  # 768 / 12
+    num_layers  = 12   # OPT-125M
+    num_heads   = 12   # OPT-125M
+    head_dim    = 64   # 768 / 12
 
     logger.info("=" * 60)
     logger.info("QuantForge  -  KV-Cache Memory Estimation")
@@ -71,18 +72,16 @@ def main() -> None:
 
     table_md = build_kv_cache_table(comparison)
 
-    # Save JSON
     payload = {
-        "method": "kv_cache_estimation",
-        "batch_size": args.batch_size,
-        "num_layers": num_layers,
-        "num_heads": num_heads,
-        "head_dim": head_dim,
-        "results": comparison,
+        "method":      "kv_cache_estimation",
+        "batch_size":  args.batch_size,
+        "num_layers":  num_layers,
+        "num_heads":   num_heads,
+        "head_dim":    head_dim,
+        "results":     comparison,
     }
     save_json(payload, "kv_cache.json")
 
-    # Save markdown table
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     md_path = RESULTS_DIR / "kv_cache_table.md"
     md_path.write_text(

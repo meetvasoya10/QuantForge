@@ -10,18 +10,24 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
-# Force unbuffered stdout so every log line shows immediately
-# (must happen before any heavy imports)
-import io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, line_buffering=True)
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, line_buffering=True)
+# ── stdout/stderr: UTF-8 + line-buffered (safe on all Python 3.7+ terminals) ─
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+try:
+    sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)   # type: ignore[union-attr]
+    sys.stderr.reconfigure(encoding="utf-8", line_buffering=True)   # type: ignore[union-attr]
+except Exception:
+    pass  # reconfigure not available in all environments — safe to skip
 
-import torch
+# Immediate startup proof-of-life before any heavy imports
+print("QuantForge | run_baseline starting ...", flush=True)
 
-# ── project imports ────────────────────────────────────────────────────────
+import torch  # noqa: E402  (after env/stdout setup)
+
+# ── project path ──────────────────────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
@@ -32,27 +38,23 @@ from quantforge.evaluation.latency import measure_latency
 from quantforge.evaluation.memory import measure_memory
 from quantforge.evaluation.benchmark import save_json, RESULTS_DIR
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s  %(levelname)-8s  %(message)s",
+# ── logging: explicit UTF-8 StreamHandler so Windows CP1252 never triggers ────
+_handler = logging.StreamHandler(sys.stdout)
+_handler.setFormatter(logging.Formatter(
+    fmt="%(asctime)s  %(levelname)-8s  %(message)s",
     datefmt="%H:%M:%S",
-    stream=sys.stdout,
-    force=True,
-)
+))
+logging.basicConfig(level=logging.INFO, handlers=[_handler], force=True)
 logger = logging.getLogger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="QuantForge FP16 Baseline Benchmark")
-    p.add_argument("--max_samples", type=int, default=256,
-                   help="Number of WikiText-2 validation samples (default: 256)")
-    p.add_argument("--max_length",  type=int, default=512,
-                   help="Maximum token length per sample (default: 512)")
-    p.add_argument("--device",  default="cuda", choices=["cuda", "cpu"],
-                   help="Inference device (default: cuda)")
+    p.add_argument("--max_samples", type=int, default=256)
+    p.add_argument("--max_length",  type=int, default=512)
+    p.add_argument("--device",  default="cuda", choices=["cuda", "cpu"])
     p.add_argument("--dtype",   default="float16",
-                   choices=["float16", "float32", "bfloat16"],
-                   help="Model dtype (default: float16)")
+                   choices=["float16", "float32", "bfloat16"])
     return p.parse_args()
 
 
@@ -76,17 +78,15 @@ def main() -> None:
     logger.info("=" * 60)
 
     # ------------------------------------------------------------------
-    # Step 1: Load model + tokenizer
-    #   First run downloads ~500 MB from HuggingFace Hub.
-    #   You will see a progress bar from the transformers library.
+    # [1/5] Load model + tokenizer
     # ------------------------------------------------------------------
     logger.info("[1/5] Loading model facebook/opt-125m ...")
-    logger.info("      (first run downloads ~500 MB - progress bar will appear below)")
+    logger.info("      (first run downloads ~500 MB - progress bar appears below)")
     model, tokenizer = load_model_and_tokenizer(device=str(device), dtype=dtype)
     logger.info("      Model loaded OK.")
 
     # ------------------------------------------------------------------
-    # Step 2: Load WikiText-2 validation data
+    # [2/5] Load WikiText-2 validation samples
     # ------------------------------------------------------------------
     logger.info("[2/5] Loading WikiText-2 validation samples ...")
     samples = load_wikitext_samples(
@@ -97,14 +97,14 @@ def main() -> None:
     logger.info("      Loaded %d samples.", len(samples))
 
     # ------------------------------------------------------------------
-    # Step 3: Perplexity
+    # [3/5] Perplexity
     # ------------------------------------------------------------------
     logger.info("[3/5] Computing perplexity over %d samples ...", len(samples))
     ppl = compute_perplexity(model, samples, device)
     logger.info("      Perplexity: %.4f", ppl)
 
     # ------------------------------------------------------------------
-    # Step 4: Memory
+    # [4/5] Memory
     # ------------------------------------------------------------------
     logger.info("[4/5] Measuring memory ...")
     mem = measure_memory(model, device)
@@ -113,15 +113,15 @@ def main() -> None:
     logger.info("      CUDA reserved: %.2f MB", mem["cuda_reserved_mb"])
 
     # ------------------------------------------------------------------
-    # Step 5: Latency (3 warmup + 10 timed runs)
+    # [5/5] Latency
     # ------------------------------------------------------------------
     logger.info("[5/5] Measuring generation latency (warmup + 10 runs) ...")
     lat = measure_latency(model, tokenizer, device)
-    logger.info("      Latency : %.1f ms", lat["latency_ms"])
-    logger.info("      Tokens/s: %.1f", lat["tokens_per_s"])
+    logger.info("      Latency : %.2f ms", lat["latency_ms"])
+    logger.info("      Tokens/s: %.2f", lat["tokens_per_s"])
 
     # ------------------------------------------------------------------
-    # Save results
+    # Save
     # ------------------------------------------------------------------
     result = {
         "method":               "fp16_baseline",
@@ -144,18 +144,17 @@ def main() -> None:
 
     path_json = save_json(result, "baseline.json")
 
-    md = (
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    (RESULTS_DIR / "baseline.md").write_text(
         "# QuantForge - FP16 Baseline\n\n"
-        f"| Metric | Value |\n"
-        f"| --- | --- |\n"
+        "| Metric | Value |\n| --- | --- |\n"
         f"| Perplexity | {result['perplexity']:.4f} |\n"
         f"| Model memory (MB) | {result['model_memory_mb']:.2f} |\n"
         f"| CUDA allocated (MB) | {result['cuda_allocated_mb']:.2f} |\n"
         f"| Latency (ms) | {result['latency_ms']:.2f} |\n"
-        f"| Tokens/s | {result['tokens_per_s']:.2f} |\n"
+        f"| Tokens/s | {result['tokens_per_s']:.2f} |\n",
+        encoding="utf-8",
     )
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    (RESULTS_DIR / "baseline.md").write_text(md, encoding="utf-8")
 
     logger.info("")
     logger.info("Results saved -> %s", path_json)
