@@ -1,4 +1,4 @@
-﻿"""
+"""
 Data loader for WikiText-2 validation split.
 Returns tokenized batches ready for perplexity evaluation.
 """
@@ -19,7 +19,7 @@ def load_wikitext_samples(
     tokenizer: PreTrainedTokenizerBase,
     max_samples: int = 256,
     max_length: int = 512,
-    dataset_name: str = "wikitext",
+    dataset_name: str = "Salesforce/wikitext",
     dataset_config: str = "wikitext-2-raw-v1",
     split: str = "validation",
 ) -> List[torch.Tensor]:
