@@ -1,4 +1,4 @@
-"""
+﻿"""
 Data loader for WikiText-2 validation split.
 Returns tokenized batches ready for perplexity evaluation.
 """
@@ -40,7 +40,7 @@ def load_wikitext_samples(
     Returns:
         List of 1-D LongTensors, one per usable text chunk.
     """
-    logger.info("Loading %s / %s (%s split) …", dataset_name, dataset_config, split)
+    logger.info("Loading %s / %s (%s split) ...", dataset_name, dataset_config, split)
     dataset = load_dataset(dataset_name, dataset_config, split=split, trust_remote_code=False)
 
     samples: List[torch.Tensor] = []

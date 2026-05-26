@@ -1,4 +1,4 @@
-"""
+﻿"""
 torch.fx-based (safe recursive) layer replacement for quantized inference.
 
 Implements a reliable recursive walk that replaces ``nn.Linear`` sub-modules
@@ -54,7 +54,7 @@ def _recursive_replace(
                 setattr(model, name, new_layer)
                 report["replaced_layers"].append(full_name)
             except Exception as exc:
-                logger.warning("FX-replace: could not replace %s – %s", full_name, exc)
+                logger.warning("FX-replace: could not replace %s - %s", full_name, exc)
                 report["failed_layers"].append(full_name)
         else:
             _recursive_replace(child, target_cls, builder, skip_names, min_features, full_name, report)
@@ -80,11 +80,11 @@ def replace_layers_fx(
 
     Returns:
         Report dict with keys:
-            ``method``            – method string.
-            ``replaced_count``    – number of layers successfully replaced.
-            ``failed_count``      – number of layers that failed replacement.
-            ``replaced_layers``   – list of replaced layer full names.
-            ``failed_layers``     – list of failed layer full names.
+            ``method``            - method string.
+            ``replaced_count``    - number of layers successfully replaced.
+            ``failed_count``      - number of layers that failed replacement.
+            ``replaced_layers``   - list of replaced layer full names.
+            ``failed_layers``     - list of failed layer full names.
     """
     from quantforge.quantization.int8 import QuantizedLinearW8A8
     from quantforge.quantization.int4 import QuantizedLinearINT4

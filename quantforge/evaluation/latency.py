@@ -1,4 +1,4 @@
-"""
+﻿"""
 Latency and throughput measurement for transformer inference.
 """
 
@@ -44,8 +44,8 @@ def measure_latency(
 
     Returns:
         Dict with keys:
-            ``latency_ms``   – mean wall-clock generation time in ms.
-            ``tokens_per_s`` – mean throughput (generated tokens / second).
+            ``latency_ms``   - mean wall-clock generation time in ms.
+            ``tokens_per_s`` - mean throughput (generated tokens / second).
     """
     model.eval()
     enc = tokenizer(prompt, return_tensors="pt").to(device)
@@ -82,7 +82,7 @@ def measure_latency(
             total_time_s += time.perf_counter() - t0
             successful += 1
         except torch.cuda.OutOfMemoryError:
-            logger.warning("OOM during latency benchmark – skipping run.")
+            logger.warning("OOM during latency benchmark - skipping run.")
             torch.cuda.empty_cache()
         except Exception as exc:
             logger.warning("Latency benchmark error: %s", exc)

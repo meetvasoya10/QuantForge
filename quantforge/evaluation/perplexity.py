@@ -1,4 +1,4 @@
-"""
+﻿"""
 Perplexity evaluation on WikiText-2 validation samples.
 """
 
@@ -56,7 +56,7 @@ def compute_perplexity(
             total_loss += loss.item() * n_tokens
             total_tokens += n_tokens
         except torch.cuda.OutOfMemoryError:
-            logger.warning("OOM during perplexity eval – skipping sample.")
+            logger.warning("OOM during perplexity eval - skipping sample.")
             torch.cuda.empty_cache()
             continue
         except Exception as exc:
@@ -64,7 +64,7 @@ def compute_perplexity(
             continue
 
     if total_tokens == 0:
-        logger.error("No valid tokens accumulated – returning inf perplexity.")
+        logger.error("No valid tokens accumulated - returning inf perplexity.")
         return float("inf")
 
     avg_loss = total_loss / total_tokens

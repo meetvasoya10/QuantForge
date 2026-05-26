@@ -1,11 +1,11 @@
-"""
+﻿"""
 INT4 weight-only quantization.
 
 Implements:
   - Per-output-channel symmetric INT4 quantization.
   - Weights stored as int8 tensors in the range [-8, 7] (simulated INT4).
   - Dequantization during the forward pass.
-  - ``replace_linear_with_int4`` – recursive module replacement.
+  - ``replace_linear_with_int4`` - recursive module replacement.
 """
 
 from __future__ import annotations
@@ -37,8 +37,8 @@ def quantize_weight_per_channel_int4(
 
     Returns:
         Tuple of:
-            ``q_weight`` – int8 tensor with values in [-8, 7].
-            ``scale``    – FP32 scale per output channel, shape (out_features, 1).
+            ``q_weight`` - int8 tensor with values in [-8, 7].
+            ``scale``    - FP32 scale per output channel, shape (out_features, 1).
     """
     max_abs = weight.abs().max(dim=1, keepdim=True).values.clamp(min=1e-8)
     scale = max_abs / 7.0

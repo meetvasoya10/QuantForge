@@ -1,5 +1,5 @@
-"""
-run_quantized.py – Benchmark any single quantization method.
+﻿"""
+run_quantized.py - Benchmark any single quantization method.
 
 Usage:
     python -m quantforge.scripts.run_quantized --method int8   --max_samples 256
@@ -12,12 +12,17 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import io
 import logging
 import sys
 from pathlib import Path
 from typing import Any, Dict
 
 import torch
+
+# Force unbuffered output so every log line appears immediately
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, line_buffering=True)
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, line_buffering=True)
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -34,6 +39,8 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-8s  %(message)s",
     datefmt="%H:%M:%S",
+    stream=sys.stdout,
+    force=True,
 )
 logger = logging.getLogger(__name__)
 
@@ -136,7 +143,7 @@ def main() -> None:
     device = torch.device(args.device if torch.cuda.is_available() or args.device == "cpu" else "cpu")
 
     logger.info("=" * 60)
-    logger.info("QuantForge  –  %s Benchmark", method.upper())
+    logger.info("QuantForge  -  %s Benchmark", method.upper())
     logger.info("device=%s  dtype=%s  max_samples=%d  max_length=%d",
                 device, dtype, args.max_samples, args.max_length)
     logger.info("=" * 60)
@@ -144,36 +151,44 @@ def main() -> None:
     # ------------------------------------------------------------------
     # 1. Load model + data (need baseline model for logit similarity)
     # ------------------------------------------------------------------
+    logger.info("[1/7] Loading model facebook/opt-125m ...")
+    logger.info("      (first run downloads ~500 MB - progress bar will appear below)")
     baseline_model, tokenizer = load_model_and_tokenizer(device=str(device), dtype=dtype)
+    logger.info("      Model loaded OK.")
+    logger.info("[2/7] Loading WikiText-2 validation samples ...")
     samples = load_wikitext_samples(tokenizer, max_samples=args.max_samples,
                                     max_length=args.max_length)
+    logger.info("      Loaded %d samples.", len(samples))
 
     # ------------------------------------------------------------------
     # 2. Clone model for quantization
     # ------------------------------------------------------------------
+    logger.info("[3/7] Cloning model for quantization ...")
     quant_model = clone_model(baseline_model)
+    logger.info("      Clone ready.")
 
     # ------------------------------------------------------------------
     # 3. Apply quantization
     # ------------------------------------------------------------------
-    logger.info("Applying %s quantization …", method)
+    logger.info("[4/7] Applying %s quantization ...", method.upper())
     extra = {}
     try:
         extra = _apply_method(method, quant_model, samples, device)
+        logger.info("      Quantization applied.")
     except Exception as exc:
-        logger.error("Quantization failed: %s", exc, exc_info=True)
+        logger.error("      Quantization failed: %s", exc, exc_info=True)
         extra["quantization_error"] = str(exc)
 
     # ------------------------------------------------------------------
     # 4. Perplexity
     # ------------------------------------------------------------------
-    logger.info("Computing perplexity …")
+    logger.info("[5/7] Computing perplexity over %d samples ...", len(samples))
     try:
         ppl = compute_perplexity(quant_model, samples, device)
     except Exception as exc:
-        logger.error("Perplexity eval failed: %s", exc)
+        logger.error("      Perplexity eval failed: %s", exc)
         ppl = float("inf")
-    logger.info("Perplexity: %.4f", ppl)
+    logger.info("      Perplexity: %.4f", ppl)
 
     # ------------------------------------------------------------------
     # 5. Memory
@@ -185,25 +200,25 @@ def main() -> None:
     # ------------------------------------------------------------------
     # 6. Latency
     # ------------------------------------------------------------------
-    logger.info("Measuring latency …")
+    logger.info("[6/7] Measuring generation latency ...")
     try:
         lat = measure_latency(quant_model, tokenizer, device)
     except Exception as exc:
-        logger.error("Latency failed: %s", exc)
+        logger.error("      Latency failed: %s", exc)
         lat = {"latency_ms": float("inf"), "tokens_per_s": 0.0}
-    logger.info("Latency: %.1f ms  |  Tokens/s: %.1f", lat["latency_ms"], lat["tokens_per_s"])
+    logger.info("      Latency: %.1f ms  |  Tokens/s: %.1f", lat["latency_ms"], lat["tokens_per_s"])
 
     # ------------------------------------------------------------------
     # 7. Logit similarity vs baseline
     # ------------------------------------------------------------------
-    logger.info("Computing logit similarity vs baseline …")
+    logger.info("[7/7] Computing logit similarity vs baseline (16 samples) ...")
     try:
         sim = compute_logit_similarity(baseline_model, quant_model, samples, device,
                                        max_samples=16)
     except Exception as exc:
-        logger.warning("Logit similarity failed: %s", exc)
+        logger.warning("      Logit similarity failed: %s", exc)
         sim = {"cosine_similarity": 0.0, "mse": float("inf")}
-    logger.info("Cosine similarity: %.4f  |  MSE: %.4e", sim["cosine_similarity"], sim["mse"])
+    logger.info("      Cosine sim: %.4f  |  MSE: %.4e", sim["cosine_similarity"], sim["mse"])
 
     # ------------------------------------------------------------------
     # 8. Assemble result and enrich with deltas
@@ -231,8 +246,11 @@ def main() -> None:
         result = enrich_with_deltas(result, baseline)
 
     path = save_json(result, f"{method}.json")
-    logger.info("Results saved → %s", path)
-    logger.info("%s benchmark complete.", method.upper())
+    logger.info("")
+    logger.info("Results saved -> %s", path)
+    logger.info("=" * 60)
+    logger.info("%s COMPLETE.", method.upper())
+    logger.info("=" * 60)
 
     # Cleanup
     del baseline_model, quant_model

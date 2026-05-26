@@ -1,4 +1,4 @@
-"""
+﻿"""
 Model loader for facebook/opt-125m.
 
 Loads the model and tokenizer with safe defaults for 6 GB VRAM.
@@ -38,11 +38,11 @@ def load_model_and_tokenizer(
         RuntimeError: If CUDA is requested but not available.
     """
     if device == "cuda" and not torch.cuda.is_available():
-        logger.warning("CUDA requested but not available – falling back to CPU.")
+        logger.warning("CUDA requested but not available - falling back to CPU.")
         device = "cpu"
         dtype = torch.float32
 
-    logger.info("Loading tokenizer for %s …", model_id)
+    logger.info("Loading tokenizer for %s ...", model_id)
     tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(
         model_id, use_fast=True
     )
@@ -50,7 +50,7 @@ def load_model_and_tokenizer(
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    logger.info("Loading model %s (dtype=%s, device=%s) …", model_id, dtype, device)
+    logger.info("Loading model %s (dtype=%s, device=%s) ...", model_id, dtype, device)
     model: PreTrainedModel = AutoModelForCausalLM.from_pretrained(
         model_id,
         torch_dtype=dtype,

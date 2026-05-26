@@ -1,11 +1,11 @@
-"""
+﻿"""
 INT8 / W8A8 quantization.
 
 Implements:
   - Per-output-channel INT8 weight quantization (static).
   - Dynamic per-token activation quantization at runtime.
   - Safe PyTorch dequantization path (no custom CUDA kernels).
-  - ``replace_linear_with_int8`` – recursive module replacement.
+  - ``replace_linear_with_int8`` - recursive module replacement.
 """
 
 from __future__ import annotations
@@ -36,8 +36,8 @@ def quantize_weight_per_channel_int8(
 
     Returns:
         Tuple of:
-            ``q_weight``  – INT8 tensor of shape (out_features, in_features).
-            ``scale``     – FP32 scale tensor of shape (out_features, 1).
+            ``q_weight``  - INT8 tensor of shape (out_features, in_features).
+            ``scale``     - FP32 scale tensor of shape (out_features, 1).
     """
     max_abs = weight.abs().max(dim=1, keepdim=True).values.clamp(min=1e-8)
     scale = max_abs / 127.0
@@ -56,8 +56,8 @@ def quantize_activation_per_token_int8(
 
     Returns:
         Tuple of:
-            ``q_x``   – INT8 tensor with same shape as *x*.
-            ``scale`` – FP32 scale of shape (..., 1).
+            ``q_x``   - INT8 tensor with same shape as *x*.
+            ``scale`` - FP32 scale of shape (..., 1).
     """
     shape = x.shape
     x_2d = x.reshape(-1, shape[-1])

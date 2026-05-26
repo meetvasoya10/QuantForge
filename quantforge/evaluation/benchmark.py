@@ -1,4 +1,4 @@
-"""
+﻿"""
 Master benchmark runner: assembles all per-method metrics into a
 consolidated results dict and markdown table.
 """
@@ -31,7 +31,7 @@ def save_json(data: Dict[str, Any], filename: str) -> Path:
     path = RESULTS_DIR / filename
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2)
-    logger.info("Saved → %s", path)
+    logger.info("Saved -> %s", path)
     return path
 
 
@@ -66,7 +66,7 @@ def build_benchmark_table(result_files: List[str]) -> str:
     for fname in result_files:
         data = load_json(fname)
         if data is None:
-            logger.warning("Result file not found: %s – skipping.", fname)
+            logger.warning("Result file not found: %s - skipping.", fname)
             continue
         rows.append(data)
 
@@ -95,7 +95,7 @@ def build_benchmark_table(result_files: List[str]) -> str:
     for row in rows:
         cells = []
         for col in present:
-            val = row.get(col, "—")
+            val = row.get(col, "--")
             if isinstance(val, float):
                 cells.append(f"{val:.4f}" if abs(val) < 1e4 else f"{val:.2e}")
             else:
@@ -120,7 +120,7 @@ def save_benchmark_table(result_files: List[str]) -> Path:
     with open(path, "w", encoding="utf-8") as fh:
         fh.write("# QuantForge Benchmark Results\n\n")
         fh.write(table)
-    logger.info("Benchmark table saved → %s", path)
+    logger.info("Benchmark table saved -> %s", path)
     return path
 
 
@@ -129,9 +129,9 @@ def enrich_with_deltas(result: Dict[str, Any], baseline: Dict[str, Any]) -> Dict
     Compute delta metrics relative to a baseline result dict.
 
     Adds the following keys to *result* (in-place and as return value):
-        - ``perplexity_delta``      – absolute PPL increase vs baseline.
-        - ``memory_reduction_pct``  – % reduction in model_memory_mb.
-        - ``speed_change_pct``      – % change in tokens_per_s (positive = faster).
+        - ``perplexity_delta``      - absolute PPL increase vs baseline.
+        - ``memory_reduction_pct``  - % reduction in model_memory_mb.
+        - ``speed_change_pct``      - % change in tokens_per_s (positive = faster).
 
     Args:
         result:   Dict produced by one quantization method.

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Memory measurement utilities: model parameters, CUDA allocated/reserved.
 """
 
@@ -23,9 +23,9 @@ def measure_memory(model: PreTrainedModel, device: torch.device) -> Dict[str, fl
 
     Returns:
         Dict with keys:
-            ``model_memory_mb``     – parameter bytes converted to MB.
-            ``cuda_allocated_mb``   – CUDA memory currently allocated (MB).
-            ``cuda_reserved_mb``    – CUDA memory reserved by the cache allocator (MB).
+            ``model_memory_mb``     - parameter bytes converted to MB.
+            ``cuda_allocated_mb``   - CUDA memory currently allocated (MB).
+            ``cuda_reserved_mb``    - CUDA memory reserved by the cache allocator (MB).
     """
     param_bytes = sum(p.numel() * p.element_size() for p in model.parameters())
     model_mb = param_bytes / (1024 ** 2)

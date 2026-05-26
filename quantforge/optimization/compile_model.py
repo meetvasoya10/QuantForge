@@ -1,4 +1,4 @@
-"""
+﻿"""
 torch.compile inference benchmarking.
 
 Wraps the model with ``torch.compile`` (if available) and compares
@@ -60,13 +60,13 @@ def benchmark_compile(
 
     Returns:
         Dict with keys:
-            ``compile_supported``         – bool.
-            ``baseline_latency_ms``       – non-compiled mean latency.
-            ``baseline_tokens_per_s``     – non-compiled throughput.
-            ``compiled_latency_ms``       – compiled mean latency (or None).
-            ``compiled_tokens_per_s``     – compiled throughput (or None).
-            ``speedup_pct``               – % latency reduction (or None).
-            ``error``                     – error message if compile failed.
+            ``compile_supported``         - bool.
+            ``baseline_latency_ms``       - non-compiled mean latency.
+            ``baseline_tokens_per_s``     - non-compiled throughput.
+            ``compiled_latency_ms``       - compiled mean latency (or None).
+            ``compiled_tokens_per_s``     - compiled throughput (or None).
+            ``speedup_pct``               - % latency reduction (or None).
+            ``error``                     - error message if compile failed.
     """
     model.eval()
     enc = tokenizer(prompt, return_tensors="pt").to(device)
@@ -119,7 +119,7 @@ def benchmark_compile(
         if not hasattr(torch, "compile"):
             raise RuntimeError("torch.compile not available in this PyTorch version.")
 
-        logger.info("Compiling model with torch.compile …")
+        logger.info("Compiling model with torch.compile ...")
         compiled_model = torch.compile(model, mode="reduce-overhead", fullgraph=False)
 
         # Warm up compiled model

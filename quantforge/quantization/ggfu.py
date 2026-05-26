@@ -1,4 +1,4 @@
-"""
+﻿"""
 GGFU: Grouped Gradient-Free Uniform Quantization.
 
 A custom quantization scheme that combines:
@@ -58,8 +58,8 @@ def quantize_group_wise(
 
     Returns:
         Tuple of:
-            ``q_weight`` – int8 tensor, shape (out_features, in_features).
-            ``scales``   – FP32 tensor, shape (out_features, num_groups).
+            ``q_weight`` - int8 tensor, shape (out_features, in_features).
+            ``scales``   - FP32 tensor, shape (out_features, num_groups).
     """
     out_f, in_f = weight.shape
     n_bits_max = (2 ** (bits - 1)) - 1  # e.g. 7 for bits=4
@@ -230,7 +230,7 @@ def apply_ggfu(
         skip_names:      Layer name substrings to skip.
 
     Returns:
-        Dict of ``layer_name → {"cosine_similarity": …, "mse": …}``.
+        Dict of ``layer_name → {"cosine_similarity": ..., "mse": ...}``.
     """
     layer_metrics: Dict[str, Dict[str, float]] = {}
 

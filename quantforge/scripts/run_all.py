@@ -1,5 +1,5 @@
-"""
-run_all.py – Run the complete QuantForge benchmark suite end-to-end.
+﻿"""
+run_all.py - Run the complete QuantForge benchmark suite end-to-end.
 
 Executes:
   1. FP16 baseline
@@ -16,6 +16,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import io
 import logging
 import sys
 import traceback
@@ -23,6 +24,10 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import torch
+
+# Force unbuffered output
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, line_buffering=True)
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, line_buffering=True)
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -33,6 +38,8 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-8s  %(message)s",
     datefmt="%H:%M:%S",
+    stream=sys.stdout,
+    force=True,
 )
 logger = logging.getLogger(__name__)
 
@@ -156,14 +163,14 @@ def main() -> None:
     # Build consolidated benchmark table
     # ─────────────────────────────────────────────────────────────────
     logger.info("")
-    logger.info("Building benchmark table …")
+    logger.info("Building benchmark table ...")
     result_files = [
         "baseline.json", "int8.json", "int4.json",
         "gptq.json", "smoothquant.json", "ggfu.json",
     ]
     try:
         table_path = save_benchmark_table(result_files)
-        logger.info("Benchmark table → %s", table_path)
+        logger.info("Benchmark table -> %s", table_path)
     except Exception:
         logger.error("Failed to build benchmark table:\n%s", traceback.format_exc())
 

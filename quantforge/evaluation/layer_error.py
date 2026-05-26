@@ -1,4 +1,4 @@
-"""
+﻿"""
 Layer-wise reconstruction error: cosine similarity and MSE between
 baseline and quantized logits / activations.
 """
@@ -39,8 +39,8 @@ def compute_logit_similarity(
 
     Returns:
         Dict with keys:
-            ``cosine_similarity`` – mean cosine similarity over all tokens.
-            ``mse``               – mean squared error over all logit positions.
+            ``cosine_similarity`` - mean cosine similarity over all tokens.
+            ``mse``               - mean squared error over all logit positions.
     """
     baseline_model.eval()
     quantized_model.eval()
@@ -66,7 +66,7 @@ def compute_logit_similarity(
             mse_total += mse
             count += 1
         except torch.cuda.OutOfMemoryError:
-            logger.warning("OOM during logit similarity – skipping sample.")
+            logger.warning("OOM during logit similarity - skipping sample.")
             torch.cuda.empty_cache()
         except Exception as exc:
             logger.warning("Error in logit similarity: %s", exc)
@@ -94,9 +94,9 @@ def compute_layer_reconstruction_error(
 
     Returns:
         Dict with keys:
-            ``cosine_similarity`` – mean cosine similarity across the last dim.
-            ``mse``               – mean squared error.
-            ``relative_error``    – ||q - b|| / (||b|| + eps).
+            ``cosine_similarity`` - mean cosine similarity across the last dim.
+            ``mse``               - mean squared error.
+            ``relative_error``    - ||q - b|| / (||b|| + eps).
     """
     b = baseline_out.float().reshape(-1, baseline_out.size(-1))
     q = quantized_out.float().reshape(-1, quantized_out.size(-1))

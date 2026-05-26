@@ -1,10 +1,10 @@
-"""
+﻿"""
 KV-cache INT8 memory estimation.
 
 Provides:
-  - ``quantize_tensor_int8``   – quantize any tensor to INT8.
-  - ``dequantize_tensor_int8`` – reconstruct FP tensor from INT8.
-  - ``estimate_kv_cache_memory`` – estimate KV-cache footprint at various
+  - ``quantize_tensor_int8``   - quantize any tensor to INT8.
+  - ``dequantize_tensor_int8`` - reconstruct FP tensor from INT8.
+  - ``estimate_kv_cache_memory`` - estimate KV-cache footprint at various
     sequence lengths and compare FP16 vs INT8.
 """
 
@@ -34,8 +34,8 @@ def quantize_tensor_int8(
 
     Returns:
         Tuple of:
-            ``q_tensor`` – INT8 tensor, same shape as *tensor*.
-            ``scale``    – Scalar FP32 scale factor.
+            ``q_tensor`` - INT8 tensor, same shape as *tensor*.
+            ``scale``    - Scalar FP32 scale factor.
     """
     max_abs = tensor.abs().max().clamp(min=1e-8)
     scale = max_abs / 127.0

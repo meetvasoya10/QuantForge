@@ -1,4 +1,4 @@
-"""
+﻿"""
 GPTQ-style post-training quantization (simplified).
 
 Implements a layer-wise, error-aware quantization procedure inspired by
@@ -12,7 +12,7 @@ Pipeline:
   2. Compute a per-column importance score (diagonal of X^T X, i.e. the
      squared activation norm per input feature).
   3. Scale weight columns by their importance, round to INT8, then rescale
-     back – giving importance-weighted quantization.
+     back - giving importance-weighted quantization.
   4. Replace the layer in-place with a ``QuantizedLinearW8A8`` whose weights
      reflect the GPTQ-adjusted quantization.
 """
@@ -84,8 +84,8 @@ def _gptq_quantize_weight(
 
     Returns:
         Tuple of:
-            ``q_weight`` – INT8 tensor of shape (out, in).
-            ``scale``    – FP32 per-channel scale of shape (out, 1).
+            ``q_weight`` - INT8 tensor of shape (out, in).
+            ``scale``    - FP32 per-channel scale of shape (out, 1).
     """
     if len(activation_inputs) == 0:
         # Fall back to plain per-channel INT8
@@ -151,7 +151,7 @@ def apply_gptq(
     model.eval()
 
     # ------------------------------------------------------------------
-    # Step 1 – identify target layers and attach hooks
+    # Step 1 - identify target layers and attach hooks
     # ------------------------------------------------------------------
     collectors: Dict[str, _ActivationCollector] = {}
     layer_refs: Dict[str, nn.Linear] = {}
@@ -173,14 +173,14 @@ def apply_gptq(
     logger.info("GPTQ: attached hooks to %d linear layers.", len(collectors))
 
     # ------------------------------------------------------------------
-    # Step 2 – run calibration forward passes to collect activations
+    # Step 2 - run calibration forward passes to collect activations
     # ------------------------------------------------------------------
     with torch.no_grad():
         for i, ids in enumerate(calibration_samples[:calibration_count]):
             try:
                 model(input_ids=ids.unsqueeze(0).to(device))
             except torch.cuda.OutOfMemoryError:
-                logger.warning("OOM during GPTQ calibration pass %d – stopping early.", i)
+                logger.warning("OOM during GPTQ calibration pass %d - stopping early.", i)
                 torch.cuda.empty_cache()
                 break
             except Exception as exc:
@@ -191,7 +191,7 @@ def apply_gptq(
         c.remove()
 
     # ------------------------------------------------------------------
-    # Step 3 – quantize each layer using importance-weighted INT8
+    # Step 3 - quantize each layer using importance-weighted INT8
     # ------------------------------------------------------------------
     layer_errors: Dict[str, float] = {}
 

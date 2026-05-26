@@ -1,5 +1,5 @@
-"""
-run_kv_cache.py – KV-cache INT8 memory estimation benchmark.
+﻿"""
+run_kv_cache.py - KV-cache INT8 memory estimation benchmark.
 
 Usage:
     python -m quantforge.scripts.run_kv_cache [--batch_size N]
@@ -8,9 +8,14 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import io
 import logging
 import sys
 from pathlib import Path
+
+# Force unbuffered output
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, line_buffering=True)
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, line_buffering=True)
 
 # ── project imports ────────────────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parents[2]
@@ -23,6 +28,8 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-8s  %(message)s",
     datefmt="%H:%M:%S",
+    stream=sys.stdout,
+    force=True,
 )
 logger = logging.getLogger(__name__)
 
@@ -44,7 +51,7 @@ def main() -> None:
     head_dim    = 64  # 768 / 12
 
     logger.info("=" * 60)
-    logger.info("QuantForge  –  KV-Cache Memory Estimation")
+    logger.info("QuantForge  -  KV-Cache Memory Estimation")
     logger.info("Model: facebook/opt-125m | batch=%d", args.batch_size)
     logger.info("=" * 60)
 
@@ -84,7 +91,7 @@ def main() -> None:
         + table_md,
         encoding="utf-8",
     )
-    logger.info("Markdown table saved → %s", md_path)
+    logger.info("Markdown table saved -> %s", md_path)
     logger.info("KV-cache estimation complete.")
 
 
