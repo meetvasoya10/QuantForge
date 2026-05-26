@@ -5,7 +5,8 @@ Usage:
     python -m quantforge.scripts.run_kv_cache [--batch_size N]
 """
 
-from __future__ import annotations
+# Auto-switch to venv Python if wrong interpreter is active
+import quantforge.scripts._bootstrap  # noqa: F401
 
 import argparse
 import logging
@@ -15,12 +16,10 @@ from pathlib import Path
 
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 try:
-    sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)   # type: ignore[union-attr]
-    sys.stderr.reconfigure(encoding="utf-8", line_buffering=True)   # type: ignore[union-attr]
+    sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)  # type: ignore[union-attr]
+    sys.stderr.reconfigure(encoding="utf-8", line_buffering=True)  # type: ignore[union-attr]
 except Exception:
     pass
-
-print("QuantForge | run_kv_cache starting ...", flush=True)
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))

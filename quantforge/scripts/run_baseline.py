@@ -6,7 +6,8 @@ Usage:
                                               [--device cuda|cpu] [--dtype float16|float32]
 """
 
-from __future__ import annotations
+# Auto-switch to venv Python if wrong interpreter is active
+import quantforge.scripts._bootstrap  # noqa: F401
 
 import argparse
 import logging
@@ -14,32 +15,15 @@ import os
 import sys
 from pathlib import Path
 
-# ── stdout/stderr: UTF-8 + line-buffered (safe on all Python 3.7+ terminals) ─
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 try:
-    sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)   # type: ignore[union-attr]
-    sys.stderr.reconfigure(encoding="utf-8", line_buffering=True)   # type: ignore[union-attr]
+    sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)  # type: ignore[union-attr]
+    sys.stderr.reconfigure(encoding="utf-8", line_buffering=True)  # type: ignore[union-attr]
 except Exception:
-    pass  # reconfigure not available in all environments — safe to skip
+    pass
 
-# Immediate startup proof-of-life before any heavy imports
-print("QuantForge | run_baseline starting ...", flush=True)
+import torch
 
-try:
-    import torch  # noqa: E402
-except ModuleNotFoundError:
-    print("", flush=True)
-    print("ERROR: 'torch' not found. You are using the wrong Python.", flush=True)
-    print("Run with the venv Python instead:", flush=True)
-    print("", flush=True)
-    print("  .venv\\Scripts\\python.exe -m quantforge.scripts.run_baseline --max_samples 64", flush=True)
-    print("", flush=True)
-    print("Or use the launcher:", flush=True)
-    print("", flush=True)
-    print("  .\\quantforge.bat -m quantforge.scripts.run_baseline --max_samples 64", flush=True)
-    sys.exit(1)
-
-# ── project path ──────────────────────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 

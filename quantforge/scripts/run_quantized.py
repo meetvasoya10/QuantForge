@@ -9,7 +9,8 @@ Usage:
     python -m quantforge.scripts.run_quantized --method ggfu        --max_samples 256
 """
 
-from __future__ import annotations
+# Auto-switch to venv Python if wrong interpreter is active
+import quantforge.scripts._bootstrap  # noqa: F401
 
 import argparse
 import logging
@@ -20,21 +21,12 @@ from typing import Any, Dict
 
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 try:
-    sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)   # type: ignore[union-attr]
-    sys.stderr.reconfigure(encoding="utf-8", line_buffering=True)   # type: ignore[union-attr]
+    sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)  # type: ignore[union-attr]
+    sys.stderr.reconfigure(encoding="utf-8", line_buffering=True)  # type: ignore[union-attr]
 except Exception:
     pass
 
-print("QuantForge | run_quantized starting ...", flush=True)
-
-try:
-    import torch  # noqa: E402
-except ModuleNotFoundError:
-    print("", flush=True)
-    print("ERROR: 'torch' not found. You are using the wrong Python.", flush=True)
-    print("  .venv\\Scripts\\python.exe -m quantforge.scripts.run_quantized --method int8", flush=True)
-    print("  OR:  .\\quantforge.bat -m quantforge.scripts.run_quantized --method int8", flush=True)
-    sys.exit(1)
+import torch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
