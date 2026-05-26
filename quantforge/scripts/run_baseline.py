@@ -25,7 +25,19 @@ except Exception:
 # Immediate startup proof-of-life before any heavy imports
 print("QuantForge | run_baseline starting ...", flush=True)
 
-import torch  # noqa: E402  (after env/stdout setup)
+try:
+    import torch  # noqa: E402
+except ModuleNotFoundError:
+    print("", flush=True)
+    print("ERROR: 'torch' not found. You are using the wrong Python.", flush=True)
+    print("Run with the venv Python instead:", flush=True)
+    print("", flush=True)
+    print("  .venv\\Scripts\\python.exe -m quantforge.scripts.run_baseline --max_samples 64", flush=True)
+    print("", flush=True)
+    print("Or use the launcher:", flush=True)
+    print("", flush=True)
+    print("  .\\quantforge.bat -m quantforge.scripts.run_baseline --max_samples 64", flush=True)
+    sys.exit(1)
 
 # ── project path ──────────────────────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parents[2]

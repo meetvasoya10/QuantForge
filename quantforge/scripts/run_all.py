@@ -26,7 +26,14 @@ except Exception:
 
 print("QuantForge | run_all starting ...", flush=True)
 
-import torch  # noqa: E402
+try:
+    import torch  # noqa: E402
+except ModuleNotFoundError:
+    print("", flush=True)
+    print("ERROR: 'torch' not found. You are using the wrong Python.", flush=True)
+    print("  .venv\\Scripts\\python.exe -m quantforge.scripts.run_all", flush=True)
+    print("  OR:  .\\quantforge.bat -m quantforge.scripts.run_all", flush=True)
+    sys.exit(1)
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
