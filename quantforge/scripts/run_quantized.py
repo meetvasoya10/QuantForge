@@ -31,6 +31,7 @@ from quantforge.evaluation.latency import measure_latency
 from quantforge.evaluation.memory import measure_memory
 from quantforge.evaluation.layer_error import compute_logit_similarity
 from quantforge.evaluation.benchmark import save_json, load_json, enrich_with_deltas
+from quantforge.evaluation.utils import set_seed, get_run_metadata, load_config
 
 _handler = logging.StreamHandler(sys.stdout)
 _handler.setFormatter(logging.Formatter(
@@ -40,7 +41,7 @@ _handler.setFormatter(logging.Formatter(
 logging.basicConfig(level=logging.INFO, handlers=[_handler], force=True)
 logger = logging.getLogger(__name__)
 
-SUPPORTED_METHODS = ("int8", "int4", "gptq", "smoothquant", "ggfu")
+SUPPORTED_METHODS = ("int8", "int4", "gptq", "smoothquant", "ggfu", "bitsandbytes_8bit", "bitsandbytes_4bit")
 
 
 def parse_args() -> argparse.Namespace:
@@ -61,18 +62,26 @@ def _apply_method(
     device: torch.device,
 ) -> Dict[str, Any]:
     """Apply quantization and return extra metadata dict."""
-    extra: Dict[str, Any] = {}
+    extra: Dict[str, Any] = {
+        "is_simulated": False,
+        "uses_packed_weights": False,
+        "quantization_bits": 16,
+    }
 
     if method == "int8":
         from quantforge.quantization.int8 import replace_linear_with_int8
         n = replace_linear_with_int8(model)
         extra["layers_replaced"] = n
+        extra["quantization_bits"] = 8
         logger.info("      INT8: replaced %d linear layers.", n)
 
     elif method == "int4":
         from quantforge.quantization.int4 import replace_linear_with_int4
         n = replace_linear_with_int4(model)
         extra["layers_replaced"] = n
+        extra["quantization_bits"] = 4
+        extra["is_simulated"] = False
+        extra["uses_packed_weights"] = True
         logger.info("      INT4: replaced %d linear layers.", n)
 
     elif method == "gptq":
@@ -82,6 +91,8 @@ def _apply_method(
         extra["mean_reconstruction_mse"] = round(
             sum(layer_errors.values()) / max(len(layer_errors), 1), 8
         )
+        extra["quantization_bits"] = 8
+        extra["is_simulated"] = True  # GPTQ-style here uses simulated float paths or int8 paths
 
     elif method == "smoothquant":
         from quantforge.quantization.smoothquant import apply_smoothquant
@@ -90,6 +101,8 @@ def _apply_method(
         extra["mean_outlier_ratio"] = round(
             sum(outlier_info.values()) / max(len(outlier_info), 1), 4
         )
+        extra["quantization_bits"] = 8
+        extra["is_simulated"] = True  # SmoothQuant is typically W8A8 simulated or int8
 
     elif method == "ggfu":
         from quantforge.quantization.ggfu import apply_ggfu
@@ -102,6 +115,8 @@ def _apply_method(
             extra["mean_weight_mse"] = round(
                 sum(m["mse"] for m in layer_metrics.values()) / len(layer_metrics), 8
             )
+        extra["quantization_bits"] = 4
+        extra["is_simulated"] = True  # GGFU is typically simulated
 
     return extra
 
@@ -120,16 +135,28 @@ def main() -> None:
         args.device if (torch.cuda.is_available() or args.device == "cpu") else "cpu"
     )
 
+    config = load_config("configs/benchmark_config.yaml") if os.path.exists("configs/benchmark_config.yaml") else {}
+    seed = config.get("seed", 42)
+    set_seed(seed)
+
     logger.info("=" * 60)
     logger.info("QuantForge  -  %s Benchmark", method.upper())
-    logger.info("device=%s  dtype=%s  max_samples=%d  max_length=%d",
-                device, dtype, args.max_samples, args.max_length)
+    logger.info("device=%s  dtype=%s  max_samples=%d  max_length=%d seed=%d",
+                device, dtype, args.max_samples, args.max_length, seed)
     logger.info("=" * 60)
 
     # [1/7] Load model
     logger.info("[1/7] Loading model facebook/opt-125m ...")
     logger.info("      (first run downloads ~500 MB - progress bar appears below)")
-    baseline_model, tokenizer = load_model_and_tokenizer(device=str(device), dtype=dtype)
+    from quantforge.backends import load_with_backend
+    
+    if method in ("bitsandbytes_8bit", "bitsandbytes_4bit"):
+        # Load directly quantized
+        baseline_model, tokenizer = load_with_backend("facebook/opt-125m", backend=method, device=str(device), dtype=dtype)
+        quant_model = baseline_model
+    else:
+        # Load baseline
+        baseline_model, tokenizer = load_model_and_tokenizer(device=str(device), dtype=dtype)
     logger.info("      Model loaded OK.")
 
     # [2/7] Load data
@@ -140,18 +167,26 @@ def main() -> None:
 
     # [3/7] Clone for quantization
     logger.info("[3/7] Cloning model for quantization ...")
-    quant_model = clone_model(baseline_model)
-    logger.info("      Clone ready.")
+    if method in ("bitsandbytes_8bit", "bitsandbytes_4bit"):
+        quant_model = baseline_model
+        extra = {
+            "is_simulated": False,
+            "uses_packed_weights": True,
+            "quantization_bits": 8 if method == "bitsandbytes_8bit" else 4,
+        }
+    else:
+        quant_model = clone_model(baseline_model)
+        logger.info("      Clone ready.")
 
-    # [4/7] Apply quantization
-    logger.info("[4/7] Applying %s quantization ...", method.upper())
-    extra: Dict[str, Any] = {}
-    try:
-        extra = _apply_method(method, quant_model, samples, device)
-        logger.info("      Quantization applied.")
-    except Exception as exc:
-        logger.error("      Quantization failed: %s", exc, exc_info=True)
-        extra["quantization_error"] = str(exc)
+        # [4/7] Apply quantization
+        logger.info("[4/7] Applying %s quantization ...", method.upper())
+        extra: Dict[str, Any] = {}
+        try:
+            extra = _apply_method(method, quant_model, samples, device)
+            logger.info("      Quantization applied.")
+        except Exception as exc:
+            logger.error("      Quantization failed: %s", exc, exc_info=True)
+            extra["quantization_error"] = str(exc)
 
     # [5/7] Perplexity
     logger.info("[5/7] Computing perplexity over %d samples ...", len(samples))
@@ -165,8 +200,20 @@ def main() -> None:
     # Memory
     if device.type == "cuda":
         torch.cuda.empty_cache()
-    mem = measure_memory(quant_model, device)
-    logger.info("      Model memory: %.2f MB", mem["model_memory_mb"])
+    
+    is_simulated = extra.get("is_simulated", False)
+    uses_packed_weights = extra.get("uses_packed_weights", False)
+    quantization_bits = extra.get("quantization_bits", 16)
+    
+    mem = measure_memory(
+        quant_model, 
+        device, 
+        is_simulated=is_simulated, 
+        uses_packed_weights=uses_packed_weights,
+        quantization_bits=quantization_bits
+    )
+    logger.info("      FP16 Model memory : %.2f MB", mem["fp16_model_memory_mb"])
+    logger.info("      Actual storage    : %.2f MB", mem["actual_storage_memory_mb"])
 
     # [6/7] Latency
     logger.info("[6/7] Measuring generation latency ...")
@@ -197,15 +244,24 @@ def main() -> None:
         "max_samples":       args.max_samples,
         "max_length":        args.max_length,
         "perplexity":        round(ppl, 4),
-        "model_memory_mb":   mem["model_memory_mb"],
+        "fp16_model_memory_mb": mem["fp16_model_memory_mb"],
+        "actual_storage_memory_mb": mem["actual_storage_memory_mb"],
+        "effective_quantized_memory_mb": mem["effective_quantized_memory_mb"],
         "cuda_allocated_mb": mem["cuda_allocated_mb"],
         "cuda_reserved_mb":  mem["cuda_reserved_mb"],
+        "cuda_peak_allocated_mb": mem["cuda_peak_allocated_mb"],
+        "cuda_peak_reserved_mb":  mem["cuda_peak_reserved_mb"],
         "latency_ms":        round(lat["latency_ms"], 2),
+        "latency_std_ms":    round(lat.get("latency_std_ms", 0.0), 2),
+        "latency_p50_ms":    round(lat.get("latency_p50_ms", 0.0), 2),
+        "latency_p95_ms":    round(lat.get("latency_p95_ms", 0.0), 2),
+        "latency_p99_ms":    round(lat.get("latency_p99_ms", 0.0), 2),
         "tokens_per_s":      round(lat["tokens_per_s"], 2),
         "cosine_similarity": sim["cosine_similarity"],
         "mse":               sim["mse"],
         **extra,
     }
+    result.update(get_run_metadata())
 
     baseline = load_json("baseline.json") or {}
     if baseline:

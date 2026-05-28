@@ -1,4 +1,4 @@
-﻿"""
+"""
 GPTQ-style post-training quantization (simplified).
 
 Implements a layer-wise, error-aware quantization procedure inspired by
@@ -28,6 +28,28 @@ import torch.nn as nn
 from quantforge.quantization.int8 import QuantizedLinearW8A8
 
 logger = logging.getLogger(__name__)
+
+class GPTQLinearW8A8(QuantizedLinearW8A8):
+    """
+    Extends QuantizedLinearW8A8 to support per-column importance scaling.
+    """
+    def __init__(self, in_features: int, out_features: int, bias: bool = True):
+        super().__init__(in_features, out_features, bias)
+        self.register_buffer("col_scale_inv", torch.ones(1, in_features, dtype=torch.float32))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        orig_dtype = x.dtype
+        # Fast dynamic per-token activation scale
+        x_scale = x.abs().amax(dim=-1, keepdim=True).clamp_(min=1e-8).div_(127.0)
+        
+        # Simulate A8
+        x_q = (x / x_scale).round_().clamp_(-128, 127).to(orig_dtype) * x_scale
+
+        # Dequantize W8 and apply inverse column scale
+        w_fp = self.q_weight.to(orig_dtype) * self.w_scale.to(orig_dtype)
+        w_fp = w_fp * self.col_scale_inv.to(orig_dtype)
+
+        return torch.nn.functional.linear(x_q, w_fp, self.bias)
 
 
 # ---------------------------------------------------------------------------
@@ -90,39 +112,27 @@ def _gptq_quantize_weight(
     if len(activation_inputs) == 0:
         # Fall back to plain per-channel INT8
         from quantforge.quantization.int8 import quantize_weight_per_channel_int8
-        return quantize_weight_per_channel_int8(weight)
+        q_w, scale = quantize_weight_per_channel_int8(weight)
+        return q_w, scale, torch.ones(1, weight.size(1), dtype=torch.float32)
 
     # Stack all calibration tokens → (N, C_in)
     X = torch.cat(activation_inputs, dim=0)  # (N, C_in)
 
-    # Diagonal of H ≈ X^T X per input column
-    diag_H = (X ** 2).mean(dim=0)  # (C_in,)
-    diag_H = diag_H + damping * diag_H.max().clamp(min=1e-6)
-
-    # Importance-scaled weight: each column weighted by sqrt(H_ii)
-    importance = diag_H.sqrt().unsqueeze(0)  # (1, C_in)
+    # Importance: mean(abs(X)) instead of H for stable AWQ-style scaling
+    importance = X.abs().mean(dim=0).clamp_(min=1e-5) # (C_in,)
+    importance = importance / importance.max()
+    importance = importance.sqrt().unsqueeze(0)  # (1, C_in)
+    
+    # Scale columns by importance
     w_scaled = weight * importance            # (out, C_in)
 
-    # Quantize scaled weight
-    max_abs = w_scaled.abs().max(dim=1, keepdim=True).values.clamp(min=1e-8)
-    scale_scaled = max_abs / 127.0
-    q_scaled = (w_scaled / scale_scaled).round().clamp(-128, 127).to(torch.int8)
+    # Quantize scaled weight per-row
+    max_abs = w_scaled.abs().amax(dim=1, keepdim=True).clamp_(min=1e-8)
+    scale = max_abs / 127.0
+    q_weight = (w_scaled / scale).round_().clamp_(-128, 127).to(torch.int8)
 
-    # Unscale back: effective scale for unscaled weight
-    # w ≈ q_scaled * scale_scaled / importance
-    # → scale per channel = scale_scaled / importance (broadcast)
-    # We store the de-scaled version so forward can do: q_weight * scale → w
-    # Use mean importance over columns for a single per-channel scalar:
-    mean_importance = importance.mean().clamp(min=1e-8)
-    scale = (scale_scaled / mean_importance).to(torch.float32)
-
-    # Re-quantize with the corrected scale to keep q_weight in [-128, 127]
-    w_dequant = q_scaled.float() * scale_scaled / importance
-    max_abs2 = w_dequant.abs().max(dim=1, keepdim=True).values.clamp(min=1e-8)
-    scale_final = max_abs2 / 127.0
-    q_final = (weight / scale_final).round().clamp(-128, 127).to(torch.int8)
-
-    return q_final, scale_final.to(torch.float32)
+    col_scale_inv = 1.0 / importance
+    return q_weight, scale.to(torch.float32), col_scale_inv.to(torch.float32)
 
 
 def apply_gptq(
@@ -203,19 +213,20 @@ def apply_gptq(
                 w = lin.weight.data.float()
                 acts = collectors[full_name].inputs
 
-                q_w, scale = _gptq_quantize_weight(w, acts, damping)
+                q_w, scale, col_scale_inv = _gptq_quantize_weight(w, acts, damping)
 
-                # Build a QuantizedLinearW8A8 with GPTQ weights
-                new_layer = QuantizedLinearW8A8(lin.in_features, lin.out_features, lin.bias is not None)
+                # Build a GPTQLinearW8A8 with importance weights
+                new_layer = GPTQLinearW8A8(lin.in_features, lin.out_features, lin.bias is not None)
                 new_layer.q_weight = q_w.to(device)
                 new_layer.w_scale = scale.to(device)
+                new_layer.col_scale_inv = col_scale_inv.to(device)
                 if lin.bias is not None:
                     new_layer.bias = nn.Parameter(lin.bias.data.clone())
 
                 setattr(parent, name, new_layer)
 
                 # Track reconstruction error
-                w_hat = q_w.float() * scale
+                w_hat = q_w.float() * scale * col_scale_inv
                 mse = ((w - w_hat) ** 2).mean().item()
                 layer_errors[full_name] = round(mse, 8)
             else:

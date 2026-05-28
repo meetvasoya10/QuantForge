@@ -28,9 +28,34 @@ from typing import Dict, List
 import torch
 import torch.nn as nn
 
-from quantforge.quantization.int8 import QuantizedLinearW8A8
+from quantforge.quantization.int8 import QuantizedLinearW8A8, quantize_weight_per_channel_int8
 
 logger = logging.getLogger(__name__)
+
+class SmoothQuantLinearW8A8(QuantizedLinearW8A8):
+    """
+    Extends QuantizedLinearW8A8 to divide incoming activations by the SmoothQuant scale
+    before quantization and matrix multiplication.
+    """
+    def __init__(self, in_features: int, out_features: int, bias: bool = True):
+        super().__init__(in_features, out_features, bias)
+        self.register_buffer("act_scale_inv", torch.ones(in_features, dtype=torch.float32))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        orig_dtype = x.dtype
+        # Pre-scale activation by inverse of SmoothQuant scale
+        x_scaled = x * self.act_scale_inv.to(x.dtype)
+        
+        # Fast dynamic per-token activation scale
+        x_scale = x_scaled.abs().amax(dim=-1, keepdim=True).clamp_(min=1e-8).div_(127.0)
+        
+        # Simulate A8
+        x_q = (x_scaled / x_scale).round_().clamp_(-128, 127).to(orig_dtype) * x_scale
+
+        # Dequantize W8
+        w_fp = self.q_weight.to(orig_dtype) * self.w_scale.to(orig_dtype)
+
+        return torch.nn.functional.linear(x_q, w_fp, self.bias)
 
 
 # ---------------------------------------------------------------------------
@@ -174,14 +199,13 @@ def apply_smoothquant(
                 w_smooth = w * s.unsqueeze(0)   # (C_out, C_in)
 
                 # Build quantized layer with smoothed weight
-                new_layer = QuantizedLinearW8A8.from_linear(
-                    nn.Linear(lin.in_features, lin.out_features, bias=lin.bias is not None)
-                )
+                new_layer = SmoothQuantLinearW8A8(lin.in_features, lin.out_features, bias=lin.bias is not None)
+                
                 # Override with smoothed weight
-                from quantforge.quantization.int8 import quantize_weight_per_channel_int8
                 q_w, scale = quantize_weight_per_channel_int8(w_smooth.to(device))
                 new_layer.q_weight = q_w
                 new_layer.w_scale = scale
+                new_layer.act_scale_inv = (1.0 / s).to(device)
                 if lin.bias is not None:
                     new_layer.bias = nn.Parameter(lin.bias.data.clone())
                 setattr(parent, name, new_layer)

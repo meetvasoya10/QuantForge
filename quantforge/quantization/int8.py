@@ -1,4 +1,4 @@
-﻿"""
+"""
 INT8 / W8A8 quantization.
 
 Implements:
@@ -50,21 +50,11 @@ def quantize_activation_per_token_int8(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Dynamically quantize activation *x* to INT8 per-token (per-row).
-
-    Args:
-        x: Float tensor of shape (..., in_features).  Any leading dims allowed.
-
-    Returns:
-        Tuple of:
-            ``q_x``   - INT8 tensor with same shape as *x*.
-            ``scale`` - FP32 scale of shape (..., 1).
     """
-    shape = x.shape
-    x_2d = x.reshape(-1, shape[-1])
-    max_abs = x_2d.abs().max(dim=1, keepdim=True).values.clamp(min=1e-8)
+    max_abs = x.abs().amax(dim=-1, keepdim=True).clamp_(min=1e-8)
     scale = max_abs / 127.0
-    q_x = (x_2d / scale).round().clamp(_INT8_MIN, _INT8_MAX).to(torch.int8)
-    return q_x.reshape(shape), scale.reshape(*shape[:-1], 1)
+    q_x = (x / scale).round_().clamp_(_INT8_MIN, _INT8_MAX).to(torch.int8)
+    return q_x, scale
 
 
 class QuantizedLinearW8A8(nn.Module):
@@ -121,28 +111,20 @@ class QuantizedLinearW8A8(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Forward pass with dynamic per-token activation quantization.
-
-        Args:
-            x: Input activation tensor of shape (..., in_features).
-
-        Returns:
-            Output tensor of shape (..., out_features).
         """
         orig_dtype = x.dtype
-        x_float = x.float()
 
-        # Dynamic per-token activation quantization
-        q_x, x_scale = quantize_activation_per_token_int8(x_float)
+        # Fast dynamic per-token activation scale
+        x_scale = x.abs().amax(dim=-1, keepdim=True).clamp_(min=1e-8).div_(127.0)
+        
+        # Simulate A8 using orig_dtype to avoid upcasting to float32
+        x_q = (x / x_scale).round_().clamp_(_INT8_MIN, _INT8_MAX).to(orig_dtype) * x_scale
 
-        # Dequantize both and perform FP32 GEMM
-        w_fp32 = self.q_weight.float() * self.w_scale  # (out, in)
-        x_fp32 = q_x.float() * x_scale                 # (..., in)
+        # Dequantize W8 on the fly to orig_dtype
+        w_fp = self.q_weight.to(orig_dtype) * self.w_scale.to(orig_dtype)
 
-        out = x_fp32 @ w_fp32.t()  # (..., out)
-        if self.bias is not None:
-            out = out + self.bias.float()
-
-        return out.to(orig_dtype)
+        # FP16/BF16 GEMM
+        return torch.nn.functional.linear(x_q, w_fp, self.bias)
 
 
 def replace_linear_with_int8(

@@ -1,4 +1,4 @@
-﻿"""
+"""
 GGFU: Grouped Gradient-Free Uniform Quantization.
 
 A custom quantization scheme that combines:
@@ -72,19 +72,17 @@ def quantize_group_wise(
     n_groups = padded_in // group_size
 
     w_groups = weight.reshape(out_f, n_groups, group_size)       # (out, G, gs)
-    q_groups = torch.zeros_like(w_groups, dtype=torch.int8)
-    scales = torch.zeros(out_f, n_groups, dtype=torch.float32)
-
-    for g in range(n_groups):
-        wg = w_groups[:, g, :]  # (out, gs)
-        clip_val = torch.quantile(wg.abs().reshape(-1), clip_percentile / 100.0).clamp(min=1e-8)
-        wg_clipped = wg.clamp(-clip_val, clip_val)
-        scale = clip_val / n_bits_max
-        scales[:, g] = scale.expand(out_f) if scale.numel() == 1 else scale
-        qg = (wg_clipped / scale).round().clamp(-n_bits_max - 1, n_bits_max).to(torch.int8)
-        q_groups[:, g, :] = qg
-
+    
+    # Compute per-(out_channel, group) scales and clip
+    clip_val = torch.quantile(w_groups.abs(), clip_percentile / 100.0, dim=-1, keepdim=True).clamp_(min=1e-8)
+    w_groups_clipped = torch.maximum(torch.minimum(w_groups, clip_val), -clip_val)
+    
+    scales = clip_val / n_bits_max
+    q_groups = (w_groups_clipped / scales).round_().clamp_(-n_bits_max - 1, n_bits_max).to(torch.int8)
+    
     q_weight = q_groups.reshape(out_f, padded_in)[:, :in_f].contiguous()
+    scales = scales.squeeze(-1)
+    
     return q_weight, scales
 
 
@@ -112,13 +110,12 @@ def dequantize_group_wise(
 
     # Pad if needed
     pad = n_groups * group_size - in_f
-    q_padded = F.pad(q_weight.float(), (0, pad)) if pad > 0 else q_weight.float()
+    q_padded = F.pad(q_weight, (0, pad)) if pad > 0 else q_weight
     q_groups = q_padded.reshape(out_f, n_groups, group_size)
 
-    w_dq = torch.zeros_like(q_groups, dtype=torch.float32)
-    for g in range(n_groups):
-        w_dq[:, g, :] = q_groups[:, g, :] * scales[:, g].unsqueeze(1)
-
+    # Vectorized dequantization
+    w_dq = q_groups.float() * scales.unsqueeze(-1)
+    
     return w_dq.reshape(out_f, -1)[:, :orig_in_features].contiguous()
 
 
@@ -189,20 +186,17 @@ class GGFULinear(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Dequantize weights and perform FP matmul.
-
-        Args:
-            x: Input of shape (..., in_features).
-
-        Returns:
-            Output of shape (..., out_features).
         """
-        w_fp = dequantize_group_wise(
-            self.q_weight, self.scales, self.in_features, self.group_size
-        ).to(x.dtype)
-        out = x @ w_fp.t()
-        if self.bias is not None:
-            out = out + self.bias.to(x.dtype)
-        return out
+        orig_dtype = x.dtype
+        # Dequantize efficiently without external functions to avoid overhead
+        n_groups = self.scales.shape[1]
+        pad = n_groups * self.group_size - self.in_features
+        q_padded = F.pad(self.q_weight, (0, pad)) if pad > 0 else self.q_weight
+        
+        q_groups = q_padded.view(self.out_features, n_groups, self.group_size)
+        w_fp = (q_groups.to(orig_dtype) * self.scales.unsqueeze(-1).to(orig_dtype)).view(self.out_features, -1)[:, :self.in_features]
+        
+        return torch.nn.functional.linear(x, w_fp, self.bias)
 
 
 # ---------------------------------------------------------------------------

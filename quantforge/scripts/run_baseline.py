@@ -26,6 +26,7 @@ from quantforge.evaluation.perplexity import compute_perplexity
 from quantforge.evaluation.latency import measure_latency
 from quantforge.evaluation.memory import measure_memory
 from quantforge.evaluation.benchmark import save_json, RESULTS_DIR
+from quantforge.evaluation.utils import set_seed, get_run_metadata, load_config
 
 # ── logging: explicit UTF-8 StreamHandler so Windows CP1252 never triggers ────
 _handler = logging.StreamHandler(sys.stdout)
@@ -60,10 +61,14 @@ def main() -> None:
         args.device if (torch.cuda.is_available() or args.device == "cpu") else "cpu"
     )
 
+    config = load_config("configs/benchmark_config.yaml") if os.path.exists("configs/benchmark_config.yaml") else {}
+    seed = config.get("seed", 42)
+    set_seed(seed)
+
     logger.info("=" * 60)
     logger.info("QuantForge  -  FP16 Baseline")
-    logger.info("device=%s  dtype=%s  max_samples=%d  max_length=%d",
-                device, dtype, args.max_samples, args.max_length)
+    logger.info("device=%s  dtype=%s  max_samples=%d  max_length=%d seed=%d",
+                device, dtype, args.max_samples, args.max_length, seed)
     logger.info("=" * 60)
 
     # ------------------------------------------------------------------
@@ -96,8 +101,9 @@ def main() -> None:
     # [4/5] Memory
     # ------------------------------------------------------------------
     logger.info("[4/5] Measuring memory ...")
-    mem = measure_memory(model, device)
-    logger.info("      Model memory : %.2f MB", mem["model_memory_mb"])
+    mem = measure_memory(model, device, is_simulated=False, uses_packed_weights=False, quantization_bits=16)
+    logger.info("      FP16 Model memory : %.2f MB", mem["fp16_model_memory_mb"])
+    logger.info("      Actual storage    : %.2f MB", mem["actual_storage_memory_mb"])
     logger.info("      CUDA alloc   : %.2f MB", mem["cuda_allocated_mb"])
     logger.info("      CUDA reserved: %.2f MB", mem["cuda_reserved_mb"])
 
@@ -120,16 +126,27 @@ def main() -> None:
         "max_length":           args.max_length,
         "perplexity":           round(ppl, 4),
         "perplexity_delta":     0.0,
-        "model_memory_mb":      mem["model_memory_mb"],
+        "fp16_model_memory_mb": mem["fp16_model_memory_mb"],
+        "actual_storage_memory_mb": mem["actual_storage_memory_mb"],
+        "effective_quantized_memory_mb": mem["effective_quantized_memory_mb"],
         "memory_reduction_pct": 0.0,
         "cuda_allocated_mb":    mem["cuda_allocated_mb"],
         "cuda_reserved_mb":     mem["cuda_reserved_mb"],
+        "cuda_peak_allocated_mb": mem["cuda_peak_allocated_mb"],
+        "cuda_peak_reserved_mb":  mem["cuda_peak_reserved_mb"],
         "latency_ms":           round(lat["latency_ms"], 2),
+        "latency_std_ms":       round(lat.get("latency_std_ms", 0.0), 2),
+        "latency_p50_ms":       round(lat.get("latency_p50_ms", 0.0), 2),
+        "latency_p95_ms":       round(lat.get("latency_p95_ms", 0.0), 2),
+        "latency_p99_ms":       round(lat.get("latency_p99_ms", 0.0), 2),
         "tokens_per_s":         round(lat["tokens_per_s"], 2),
         "speed_change_pct":     0.0,
         "cosine_similarity":    1.0,
         "mse":                  0.0,
+        "status":               "success",
+        "notes":                "OK"
     }
+    result.update(get_run_metadata())
 
     path_json = save_json(result, "baseline.json")
 
@@ -138,7 +155,7 @@ def main() -> None:
         "# QuantForge - FP16 Baseline\n\n"
         "| Metric | Value |\n| --- | --- |\n"
         f"| Perplexity | {result['perplexity']:.4f} |\n"
-        f"| Model memory (MB) | {result['model_memory_mb']:.2f} |\n"
+        f"| Model memory (MB) | {result['fp16_model_memory_mb']:.2f} |\n"
         f"| CUDA allocated (MB) | {result['cuda_allocated_mb']:.2f} |\n"
         f"| Latency (ms) | {result['latency_ms']:.2f} |\n"
         f"| Tokens/s | {result['tokens_per_s']:.2f} |\n",

@@ -1,4 +1,4 @@
-﻿"""
+"""
 Master benchmark runner: assembles all per-method metrics into a
 consolidated results dict and markdown table.
 """
@@ -76,15 +76,23 @@ def build_benchmark_table(result_files: List[str]) -> str:
     # Determine columns present across all rows
     columns = [
         "method",
+        "status",
         "perplexity",
         "perplexity_delta",
-        "model_memory_mb",
+        "actual_storage_memory_mb",
+        "effective_quantized_memory_mb",
         "memory_reduction_pct",
         "latency_ms",
+        "latency_p50_ms",
+        "latency_p95_ms",
+        "latency_p99_ms",
         "tokens_per_s",
         "speed_change_pct",
+        "cuda_peak_allocated_mb",
+        "cuda_peak_reserved_mb",
         "cosine_similarity",
         "mse",
+        "notes"
     ]
     present = [c for c in columns if any(c in r for r in rows)]
 
@@ -124,6 +132,64 @@ def save_benchmark_table(result_files: List[str]) -> Path:
     return path
 
 
+def save_benchmark_csv(result_files: List[str]) -> Path:
+    """
+    Build and write ``results/benchmark_results.csv``.
+
+    Args:
+        result_files: List of JSON filenames.
+
+    Returns:
+        Path to the written CSV file.
+    """
+    rows: List[Dict[str, Any]] = []
+    for fname in result_files:
+        data = load_json(fname)
+        if data:
+            rows.append(data)
+
+    path = RESULTS_DIR / "benchmark_results.csv"
+    if not rows:
+        return path
+
+    columns = [
+        "method",
+        "status",
+        "perplexity",
+        "perplexity_delta",
+        "actual_storage_memory_mb",
+        "effective_quantized_memory_mb",
+        "memory_reduction_pct",
+        "latency_ms",
+        "latency_p50_ms",
+        "latency_p95_ms",
+        "latency_p99_ms",
+        "tokens_per_s",
+        "speed_change_pct",
+        "cuda_peak_allocated_mb",
+        "cuda_peak_reserved_mb",
+        "cosine_similarity",
+        "mse",
+        "notes"
+    ]
+    present = [c for c in columns if any(c in r for r in rows)]
+
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(",".join(present) + "\n")
+        for row in rows:
+            cells = []
+            for col in present:
+                val = row.get(col, "")
+                if isinstance(val, float):
+                    cells.append(f"{val:.4f}" if abs(val) < 1e4 else f"{val:.2e}")
+                else:
+                    cells.append(str(val))
+            fh.write(",".join(cells) + "\n")
+            
+    logger.info("Benchmark CSV saved -> %s", path)
+    return path
+
+
 def enrich_with_deltas(result: Dict[str, Any], baseline: Dict[str, Any]) -> Dict[str, Any]:
     """
     Compute delta metrics relative to a baseline result dict.
@@ -141,13 +207,58 @@ def enrich_with_deltas(result: Dict[str, Any], baseline: Dict[str, Any]) -> Dict
         Mutated *result* dict.
     """
     base_ppl = baseline.get("perplexity", 0.0)
-    base_mem = baseline.get("model_memory_mb", 1.0)
+    base_mem = baseline.get("fp16_model_memory_mb", baseline.get("model_memory_mb", 1.0))
     base_tps = baseline.get("tokens_per_s", 1.0)
 
-    result["perplexity_delta"] = round(result.get("perplexity", 0.0) - base_ppl, 4)
-    mem = result.get("model_memory_mb", base_mem)
+    ppl = result.get("perplexity", float('inf'))
+    import math
+    if math.isnan(ppl) or math.isinf(ppl):
+        result["perplexity_delta"] = float('inf')
+    else:
+        result["perplexity_delta"] = round(ppl - base_ppl, 4)
+
+    # Reduction based on effective memory or actual storage depending on simulation
+    mem = result.get("effective_quantized_memory_mb", result.get("model_memory_mb", base_mem))
     result["memory_reduction_pct"] = round((1.0 - mem / max(base_mem, 1e-6)) * 100, 2)
+    
     tps = result.get("tokens_per_s", 0.0)
     result["speed_change_pct"] = round((tps / max(base_tps, 1e-6) - 1.0) * 100, 2)
+
+    # Validation Logic
+    status = "success"
+    notes = []
+
+    if math.isnan(ppl) or math.isinf(ppl):
+        status = "failed"
+        notes.append("NaN/inf perplexity")
+    elif result["perplexity_delta"] > 100:
+        status = "failed"
+        notes.append("Catastrophic perplexity")
+    elif result["perplexity_delta"] > 5:
+        status = "warning"
+        notes.append("High perplexity")
+
+    cos_sim = result.get("cosine_similarity", 1.0)
+    if cos_sim < 0.90:
+        if status != "failed":
+            status = "failed"
+        notes.append("Very low similarity")
+    elif cos_sim < 0.98:
+        if status != "failed":
+            status = "warning"
+        notes.append("Low similarity")
+
+    if tps < base_tps * 0.1:
+        if status != "failed":
+            status = "warning"
+        notes.append("Extremely slow")
+
+    if result["memory_reduction_pct"] <= 0 and result.get("method") != "fp16_baseline":
+        if status != "failed":
+            status = "warning"
+        notes.append("No memory reduction")
+
+    result["status"] = status
+    result["notes"] = ", ".join(notes) if notes else "OK"
 
     return result

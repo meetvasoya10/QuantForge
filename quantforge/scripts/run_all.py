@@ -23,7 +23,7 @@ import torch
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from quantforge.evaluation.benchmark import save_benchmark_table
+from quantforge.evaluation.benchmark import save_benchmark_table, save_benchmark_csv
 
 _handler = logging.StreamHandler(sys.stdout)
 _handler.setFormatter(logging.Formatter(
@@ -131,6 +131,13 @@ def main() -> None:
         ("KV-Cache Estimation",              run_kv),
     ]
 
+    try:
+        import bitsandbytes
+        steps.append(("BitsAndBytes 8-bit", make_quant_runner("bitsandbytes_8bit")))
+        steps.append(("BitsAndBytes 4-bit", make_quant_runner("bitsandbytes_4bit")))
+    except ImportError:
+        logger.info("bitsandbytes not installed, skipping optimized backend benchmarks.")
+
     if not args.skip_compile:
         steps.append(("torch.compile Benchmark", run_compile))
 
@@ -147,10 +154,13 @@ def main() -> None:
     result_files = [
         "baseline.json", "int8.json", "int4.json",
         "gptq.json", "smoothquant.json", "ggfu.json",
+        "bitsandbytes_8bit.json", "bitsandbytes_4bit.json"
     ]
     try:
         table_path = save_benchmark_table(result_files)
+        csv_path = save_benchmark_csv(result_files)
         logger.info("Benchmark table -> %s", table_path)
+        logger.info("Benchmark CSV   -> %s", csv_path)
     except Exception:
         logger.error("Failed to build benchmark table:\n%s", traceback.format_exc())
 
